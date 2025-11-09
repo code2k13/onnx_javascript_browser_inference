@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>🪄 ONNX Paraphraser (Local)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #fafafa;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            font-size: 1em;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            resize: vertical;
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #007bff;
+            border: none;
+            color: white;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #999;
+        }
+
+        select {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+            width: 100%;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 8px;
+            min-height: 80px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>🪄 ONNX Paraphraser</h2>
+    <label for="modelSelect">Select Model:</label>
+    <select id="modelSelect">
+        <option value="./model_files/model.onnx">model.onnx</option>
+        <option value="./model_files/model_q8.onnx">model_q8.onnx</option>
+    </select>
+
+    <p>Enter text to rephrase:</p>
+    <textarea id="input" placeholder="Type something here..."></textarea><br>
+    <button id="btn">Generate</button>
+    <h3>Output:</h3>
+    <pre id="output"></pre>
+
+    <script type="module">
+        import * as ort from "./wasm/onnxruntime-web.mjs";
+        import { AutoTokenizer, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm"
+
+        // Environment setup
+        env.localModelPath = './model_files';
+        env.allowLocalModels = true;
+        env.allowRemoteModels = false;
+        env.backends.onnx.wasm.wasmPaths = './wasm/';
+
+        // Globals for caching
+        let session = null;
+        let tokenizer = null;
+        let currentModelPath = null;
+
+        const btn = document.getElementById("btn");
+        const inputEl = document.getElementById("input");
+        const outputEl = document.getElementById("output");
+        const modelSelect = document.getElementById("modelSelect");
+
+        // Utility functions
+        function softmax(logits, temperature = 1.0) {
+            const adjusted = logits.map(l => l / temperature);
+            const max = Math.max(...adjusted);
+            const exp = adjusted.map(l => Math.exp(l - max));
+            const sum = exp.reduce((a, b) => a + b, 0);
+            return exp.map(e => e / sum);
+        }
+
+        function topKSample(probabilities, k) {
+            const indexed = probabilities.map((p, i) => ({ p, i })).sort((a, b) => b.p - a.p);
+            const top = indexed.slice(0, k);
+            const sum = top.reduce((a, b) => a + b.p, 0);
+            const norm = top.map(t => t.p / sum);
+            let r = Math.random(), cum = 0;
+            for (let i = 0; i < norm.length; i++) {
+                cum += norm[i];
+                if (r < cum) return top[i].i;
+            }
+            return top[0].i;
+        }
+
+        // Load model + tokenizer (cached)
+        async function loadModelAndTokenizer(modelPath) {
+            if (session && tokenizer && currentModelPath === modelPath) {
+                console.log("✅ Using cached model:", modelPath);
+                return;
+            }
+            outputEl.textContent = "⏳ Loading model & tokenizer...";
+            tokenizer = await AutoTokenizer.from_pretrained("./");
+            session = await ort.InferenceSession.create(modelPath, {
+                executionProviders: ["wasm"]
+            });
+            currentModelPath = modelPath;
+            outputEl.textContent = `✅ Model loaded: ${modelPath}`;
+        }
+
+        btn.onclick = async () => {
+            const prompt = inputEl.value.trim();
+            const selectedModel = modelSelect.value;
+
+            if (!prompt) {
+                outputEl.textContent = "⚠️ Please enter some text.";
+                return;
+            }
+
+            btn.disabled = true;
+            try {
+                await loadModelAndTokenizer(selectedModel);
+
+                const endId = (await tokenizer.encode("<|OUTPUT_END|>"))[0];
+                let inputText = `\nRephrase the following:\nInput: ${prompt}`;
+                const maxTokens = 64, topK = 8, temperature = 0.8;
+
+                outputEl.textContent = "🧠 Running inference...\n\n";
+                for (let step = 0; step < maxTokens; step++) {
+                    const encoded = await tokenizer(inputText, { return_tensors: "ort" });
+                    const feeds = { input_ids: encoded.input_ids.ort_tensor };
+                    if (encoded.attention_mask)
+                        feeds.attention_mask = encoded.attention_mask.ort_tensor;
+
+                    const outputMap = await session.run(feeds);
+                    const logits = outputMap.logits?.data || outputMap[Object.keys(outputMap)[0]].data;
+                    const vocabSize = logits.length / encoded.input_ids.data.length;
+                    const lastLogits = Array.from(logits.slice(-vocabSize), Number);
+
+                    const probs = softmax(lastLogits, temperature);
+                    const nextId = topKSample(probs, topK);
+                    const nextToken = await tokenizer.decode([nextId], { skip_special_tokens: false });
+
+                    if (nextToken && !["<|OUTPUT_START|>", "<|OUTPUT_END|>", "Output:"].includes(nextToken.trim())) {
+                        outputEl.textContent += nextToken;
+                    }
+
+                    inputText += nextToken;
+                    if (nextId === endId) break;
+
+                    await new Promise(r => setTimeout(r, 5));
+                }
+
+                outputEl.textContent += "\n\n✅ Done";
+            } catch (err) {
+                console.error(err);
+                outputEl.textContent = "❌ Error: " + err.message;
+            }
+
+            btn.disabled = false;
+        };
+    </script>
+</body>
+
+</html>
