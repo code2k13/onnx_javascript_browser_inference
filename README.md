@@ -26,3 +26,14 @@ This is what you should see
 This is what you should see 
 
 ![NodeJS application showing paraphrasing screen](docs/slm_web_wasm.gif)
+
+
+### Citation
+
+```
+@misc{allal2024SmolLM,
+      title={SmolLM - blazingly fast and remarkably powerful}, 
+      author={Loubna Ben Allal and Anton Lozhkov and Elie Bakouch and Leandro von Werra and Thomas Wolf},
+      year={2024},
+}
+```
