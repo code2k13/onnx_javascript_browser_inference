@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>💬 Paraphraser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
+
+    <style>
+        /* 🎨 System Theme Setup */
+        html {
+            /* Apply the system's color scheme (light/dark) */
+            color-scheme: light dark;
+            /* Set the default page background and text color to system defaults */
+            background-color: Canvas;
+            color: CanvasText;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        body {
+            background-color: Canvas;
+            color: CanvasText;
+        }
+
+        /* Override Bulma's title color to use system text color for contrast */
+        .title {
+            color: CanvasText !important;
+        }
+
+        /* --- Page Components --- */
+        .container {
+            max-width: 600px;
+        }
+
+        .chat-box {
+            height: 55vh;
+            overflow-y: auto;
+            background-color: Window;
+            /* System background color for content areas */
+            color: WindowText;
+            /* System text color for content areas */
+            border-radius: 12px;
+            padding: 1rem;
+            border: 1px solid ThreeDDarkShadow;
+            box-shadow: 0 2px 4px color-mix(in srgb, CanvasText 10%, transparent);
+        }
+
+        .chat-message {
+            margin-bottom: 1rem;
+            line-height: 1.4;
+        }
+
+        /* Keeping Bulma colors for strong/emphasis text for clear distinction */
+        .chat-user strong {
+            color: #3273dc;
+        }
+
+        .chat-bot strong {
+            color: #00d1b2;
+        }
+
+        /* Input Field Styling */
+        textarea.textarea {
+            border-radius: 8px;
+            resize: none;
+            background-color: Field;
+            /* System background color for input fields */
+            color: FieldText;
+            /* System text color for input fields */
+            border-color: GrayText;
+            /* System border color for input fields */
+        }
+
+        /* Footer Styling */
+        .footer-area {
+            position: sticky;
+            bottom: 0;
+            background-color: Window;
+            /* System background color for a distinct panel */
+            color: WindowText;
+            border: 1px solid ThreeDDarkShadow;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 -2px 5px color-mix(in srgb, CanvasText 10%, transparent);
+        }
+
+        @media (max-width: 600px) {
+            .chat-box {
+                height: 45vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <section class="section">
+        <div class="container">
+            <h1 class="title has-text-centered mb-5">💬 Paraphrasing Chat</h1>
+
+            <div id="chat" class="chat-box mb-5"></div>
+
+            <div class="footer-area">
+                <div class="field">
+                    <label class="label">Enter text to paraphrase</label>
+                    <div class="control">
+                        <textarea id="input" class="textarea" placeholder="Type or paste a sentence..."
+                            rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="control has-text-centered mt-3">
+                    <button id="send" class="button is-primary is-rounded px-5">Send ✉️</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const ws = new WebSocket("ws://" + location.host);
+        const chat = document.getElementById("chat");
+        const input = document.getElementById("input");
+        const sendBtn = document.getElementById("send");
+
+        function addMessage(role, text) {
+            const msg = document.createElement("div");
+            msg.className = "chat-message " + (role === "user" ? "chat-user" : "chat-bot");
+            msg.innerHTML = `<strong>${role === "user" ? "🧑‍💻 You" : "🤖 Bot"}:</strong> ${text}`;
+            chat.appendChild(msg);
+            chat.scrollTop = chat.scrollHeight;
+        }
+        let botmessage = ""
+        sendBtn.onclick = () => {
+            const text = input.value.trim();
+            if (!text) return;
+            // 1. Add the user's message
+            addMessage("user", text);
+            // 2. Add a temporary message for the bot to be updated
+            addMessage("bot", "...");
+            ws.send(text);
+            input.value = "";
+            input.focus();
+            botmessage = ""
+        };
+        
+        ws.onmessage = e => {
+            // Find the last bot message element
+            const botMsgs = chat.querySelectorAll(".chat-bot");
+            const lastBot = botMsgs[botMsgs.length - 1];
+            botmessage += e.data;
+            // Update its innerHTML with the new data chunk, preserving the strong tag
+            // The assumption is that the WebSocket sends complete messages, 
+            // but to stream we simply update the content.
+            lastBot.innerHTML = `<strong>🤖 Bot:</strong> ${botmessage}`;
+            chat.scrollTop = chat.scrollHeight;
+        };
+    </script>
+</body>
+
+</html>
