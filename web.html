@@ -123,7 +123,7 @@
                 return;
             }
             outputEl.textContent = "⏳ Loading model & tokenizer...";
-            tokenizer = await AutoTokenizer.from_pretrained("./");
+            tokenizer = await AutoTokenizer.from_pretrained("./model_files");
             session = await ort.InferenceSession.create(modelPath, {
                 executionProviders: ["wasm"]
             });
@@ -186,3 +186,4 @@
 </body>
 
 </html>
+
