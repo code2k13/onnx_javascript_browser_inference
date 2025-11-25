@@ -7,7 +7,12 @@ This repository is part of [playbook for experiments on fine tuning small langua
 ### Before you start
 
 - Clone the repository.
-- From https://www.kaggle.com/code/finalepoch/smollm-360-lora-onnx-inference/output?scriptVersionId=274675806 , copy `model.onnx` and `model_q8.onnx` to the `model_files` directory of the repository.
+- From
+
+https://huggingface.co/code2022/SmolLM2-135M-Instruct-Paraphrase
+OR  https://www.kaggle.com/code/finalepoch/smollm-360-lora-onnx-inference/output?scriptVersionId=274675806 , 
+
+copy `model.onnx` and `model_q8.onnx` to the `model_files` directory of the repository.
 - Run `npm install`
 
 ### To run NodeJS example (NodeJS + onnx-runtime, server side)
